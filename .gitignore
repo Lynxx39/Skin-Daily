@@ -1,0 +1,39 @@
+# Environment variables
+.env
+backend/.env
+frontend/.env
+*.env.local
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python caching & logs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+backend_log.txt
+
+# Node / JS dependencies and builds
+node_modules/
+dist/
+dist-ssr/
+.yarn/
+
+# Local databases
+*.db
+*.sqlite
+
+# IDEs & System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+scratch/
+
+# Agent skills
+.agents/
+skills-lock.json
