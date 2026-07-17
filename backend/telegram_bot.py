@@ -42,7 +42,7 @@ def get_supabase_credentials():
     return url, key
 
 # Call Supabase REST API
-def query_supabase(endpoint: str, method: str = "GET", body: dict = None) -> list:
+def query_supabase(endpoint: str, method: str = "GET", body: dict = None, upsert: bool = False) -> list:
     url, key = get_supabase_credentials()
     if not url or not key:
         return []
@@ -51,6 +51,12 @@ def query_supabase(endpoint: str, method: str = "GET", body: dict = None) -> lis
     data = None
     if body:
         data = json.dumps(body).encode("utf-8")
+    
+    prefer_parts = []
+    if method in ("POST", "PATCH"):
+        prefer_parts.append("return=representation")
+    if upsert:
+        prefer_parts.append("resolution=merge-duplicates")
         
     req = urllib.request.Request(
         full_url,
@@ -59,7 +65,7 @@ def query_supabase(endpoint: str, method: str = "GET", body: dict = None) -> lis
             "apikey": key,
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
-            "Prefer": "return=representation" if method == "POST" else ""
+            "Prefer": ", ".join(prefer_parts) if prefer_parts else ""
         },
         method=method
     )
@@ -426,15 +432,8 @@ def handle_bot_message(bot_token: str, message: dict):
                     )
                     return
             
-            # Save or update binding in Supabase
-            if is_bound:
-                query_supabase(f"telegram_bindings?chat_id=eq.{chat_id}", method="PATCH", body={"username": target_username})
-            else:
-                payload = {
-                    "chat_id": str(chat_id),
-                    "username": target_username
-                }
-                query_supabase("telegram_bindings", method="POST", body=payload)
+            # Save or update binding in Supabase (upsert on chat_id)
+            query_supabase("telegram_bindings", method="POST", body={"chat_id": str(chat_id), "username": target_username}, upsert=True)
             
             if chat_id in user_states:
                 del user_states[chat_id]
@@ -469,12 +468,8 @@ def handle_bot_message(bot_token: str, message: dict):
                     )
                     return
             
-            # Save binding to Supabase
-            payload = {
-                "chat_id": str(chat_id),
-                "username": target_username
-            }
-            query_supabase("telegram_bindings", method="POST", body=payload)
+            # Save binding to Supabase (upsert on chat_id)
+            query_supabase("telegram_bindings", method="POST", body={"chat_id": str(chat_id), "username": target_username}, upsert=True)
             if chat_id in user_states:
                 del user_states[chat_id]
             send_telegram_reply(
