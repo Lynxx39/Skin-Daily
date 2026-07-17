@@ -93,6 +93,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Cache bot username
+_bot_username_cache = {"value": None}
+
+@app.get("/api/bot-info")
+def get_bot_info():
+    if _bot_username_cache["value"]:
+        return {"username": _bot_username_cache["value"]}
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        raise HTTPException(status_code=500, detail="Bot token not configured")
+    try:
+        req = urllib.request.Request(f"https://api.telegram.org/bot{bot_token}/getMe")
+        with urllib.request.urlopen(req, timeout=10) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            if data.get("ok"):
+                uname = data["result"]["username"]
+                _bot_username_cache["value"] = uname
+                return {"username": uname}
+    except Exception as e:
+        print(f"getMe failed: {e}")
+    raise HTTPException(status_code=500, detail="Could not fetch bot info")
+
 # Pydantic schemas
 class ProductSchema(BaseModel):
     id: Optional[int] = None

@@ -40,6 +40,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem('skindaily-theme') || 'dark');
   const [username, setUsername] = useState(() => localStorage.getItem('skindaily-username') || '');
+  const [botUsername, setBotUsername] = useState('');
 
   // Apply theme to document root
   useEffect(() => {
@@ -90,6 +91,8 @@ export default function App() {
       };
       registerUser();
       loadAllData();
+      // Fetch bot username for Telegram deep link
+      fetch(`${API_BASE}/api/bot-info`).then(r => r.json()).then(d => setBotUsername(d.username || '')).catch(() => {});
     }
   }, [username]);
 
@@ -184,9 +187,9 @@ export default function App() {
 
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div style={{ display: 'flex', gap: 4 }}>
-              <button onClick={() => window.open(`https://t.me/skindaily_bot?start=${encodeURIComponent(username)}`, '_blank')} className="btn-theme" title="Buka Bot Telegram" style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {botUsername && <button onClick={() => window.open(`https://t.me/${botUsername}?start=${encodeURIComponent(username)}`, '_blank')} className="btn-theme" title="Buka Bot Telegram" style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215l-8.609 3.33c-2.068.8-4.133 1.598-5.724 2.21a405.15 405.15 0 0 1-2.849 1.09c-.42.147-.99.332-1.473.901-.728.855-.149 1.827.354 2.234.349.282.8.434 1.085.546l3.93 1.556c.238.725 1.4 4.267 1.593 4.85.103.31.21.513.367.69.075.085.163.157.266.213l.018.01.017.008c.22.104.44.13.612.118l.034-.001c.32-.038.579-.192.741-.33l2.082-1.96 4.329 3.3c.08.063.207.13.3.17a1.306 1.306 0 0 0 1.065.03c.482-.18.766-.575.893-.972l3.68-17.1c.116-.545.074-.98-.09-1.345-.33-.72-1.063-.878-1.399-.963Zm-.148 1.89-3.68 17.1c-.021.09-.043.131-.113.161a.274.274 0 0 1-.182.007l-5.096-3.886-.004-.003-2.756-2.102 12.09-9.292c.068-.06.137-.14.031-.12-.074.013-.154.069-.191.093L8.127 13.35l-.001.001-1.715-4.29-.002-.004-.001-.001-.002-.003 17.727-6.865c.043-.017.12-.04.166-.017.045.022.053.08.049.146Z"/></svg>
-              </button>
+              </button>}
               <button onClick={toggleTheme} className="btn-theme" title={theme === 'dark' ? 'Ganti ke Tema Terang' : 'Ganti ke Tema Gelap'} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {theme === 'dark' ? (
                   <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
