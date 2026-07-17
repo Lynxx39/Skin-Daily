@@ -40,7 +40,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem('skindaily-theme') || 'dark');
   const [username, setUsername] = useState(() => localStorage.getItem('skindaily-username') || '');
-  const [showTeleModal, setShowTeleModal] = useState(false);
 
   // Apply theme to document root
   useEffect(() => {
@@ -79,6 +78,17 @@ export default function App() {
 
   useEffect(() => {
     if (username) {
+      const registerUser = async () => {
+        try {
+          const { data } = await supabase.from('users').select('username').eq('username', username);
+          if (!data || data.length === 0) {
+            await supabase.from('users').insert([{ username }]);
+          }
+        } catch (err) {
+          console.error('Error verifying user:', err);
+        }
+      };
+      registerUser();
       loadAllData();
     }
   }, [username]);
@@ -174,7 +184,7 @@ export default function App() {
 
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div style={{ display: 'flex', gap: 4 }}>
-              <button onClick={() => setShowTeleModal(true)} className="btn-theme" title="Integrasi Telegram" style={{ padding: '5px 8px', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: 4, height: 28 }}>
+              <button onClick={() => window.open(`https://t.me/skindaily_bot?start=${encodeURIComponent(username)}`, '_blank')} className="btn-theme" title="Integrasi Telegram" style={{ padding: '5px 8px', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: 4, height: 28 }}>
                 🤖 Bot Tele
               </button>
               <button onClick={toggleTheme} className="btn-theme" title={theme === 'dark' ? 'Ganti ke Tema Terang' : 'Ganti ke Tema Gelap'} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -242,31 +252,7 @@ export default function App() {
         )}
       </main>
 
-      {/* ── Telegram Integration Modal ── */}
-      {showTeleModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
-          <div className="s-card" style={{ padding: 24, width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-hi)' }}>🤖 Integrasi Bot Telegram</p>
-              <button onClick={() => setShowTeleModal(false)} className="btn-ghost" style={{ border: 'none', background: 'none', fontSize: '1rem', color: 'var(--text-lo)', cursor: 'pointer' }}>✕</button>
-            </div>
-            <hr className="rule" style={{ margin: 0 }} />
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-mid)', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <p>Sambungkan bot Telegram Skindaily ke akun website Anda agar data selalu sinkron:</p>
-              <ol style={{ paddingLeft: 16, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <li>Buka bot Telegram Anda: <b>@skindaily_bot</b></li>
-                <li>Kirim perintah <code>/start</code></li>
-                <li>Bot akan mendeteksi akun belum terhubung dan meminta Anda memasukkan username.</li>
-                <li>Ketik username Anda: <code style={{ fontSize: '0.85rem', color: 'var(--color-gold)', fontWeight: 700 }}>{username}</code></li>
-              </ol>
-              <p style={{ margin: '4px 0 0', fontStyle: 'italic', color: 'var(--text-lo)' }}>Setelah terhubung, Anda dapat melacak rutinitas dan masa kedaluwarsa langsung lewat Telegram!</p>
-            </div>
-            <button onClick={() => setShowTeleModal(false)} className="btn btn-gold" style={{ padding: 10, fontSize: '0.78rem' }}>
-              Tutup & Selesai
-            </button>
-          </div>
-        </div>
-      )}
+
 
     </div>
   );

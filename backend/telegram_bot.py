@@ -406,6 +406,46 @@ def handle_bot_message(bot_token: str, message: dict):
     is_bound = len(bindings) > 0
     username = bindings[0]["username"] if is_bound else None
 
+    # Handle /start deep linking first (even for bound users who want to switch or re-bind)
+    if text.startswith("/start"):
+        parts = text.split()
+        if len(parts) > 1:
+            target_username = parts[1].strip().lower()
+            
+            # Check if this username exists in the users table
+            user_exists = query_supabase(f"users?username=eq.{target_username}")
+            if not user_exists:
+                # Also check products table just in case
+                has_products = query_supabase(f"products?username=eq.{target_username}&limit=1")
+                if not has_products:
+                    send_telegram_reply(
+                        bot_token, 
+                        chat_id, 
+                        f"❌ <b>Username '{target_username}' tidak ditemukan di database Skindaily.</b>\n\n"
+                        "Silakan buka website Skindaily di HP/browser Anda terlebih dahulu untuk membuat username."
+                    )
+                    return
+            
+            # Save or update binding in Supabase
+            if is_bound:
+                query_supabase(f"telegram_bindings?chat_id=eq.{chat_id}", method="PATCH", body={"username": target_username})
+            else:
+                payload = {
+                    "chat_id": str(chat_id),
+                    "username": target_username
+                }
+                query_supabase("telegram_bindings", method="POST", body=payload)
+            
+            if chat_id in user_states:
+                del user_states[chat_id]
+                
+            send_telegram_reply(
+                bot_token, 
+                chat_id, 
+                f"✅ <b>Akun berhasil dihubungkan!</b>\n\nAkun Telegram Anda sekarang terhubung dengan username: <b>{target_username}</b>.\n\nKetik /start untuk membuka menu asisten skincare Anda!"
+            )
+            return
+
     if not is_bound:
         # If the user is currently entering their username:
         if chat_id in user_states and user_states[chat_id].get("state") == "WAITING_TELEGRAM_BINDING":
@@ -413,10 +453,26 @@ def handle_bot_message(bot_token: str, message: dict):
                 send_telegram_reply(bot_token, chat_id, "❌ Username tidak valid. Masukkan username Anda dari website Skindaily tanpa spasi:")
                 return
             
+            target_username = text.strip().lower()
+            
+            # Check if this username exists in the users table
+            user_exists = query_supabase(f"users?username=eq.{target_username}")
+            if not user_exists:
+                # Also check products table just in case
+                has_products = query_supabase(f"products?username=eq.{target_username}&limit=1")
+                if not has_products:
+                    send_telegram_reply(
+                        bot_token, 
+                        chat_id, 
+                        f"❌ <b>Username '{target_username}' tidak ditemukan di database Skindaily.</b>\n\n"
+                        "Silakan masukkan username yang telah Anda daftarkan di website Skindaily. Masukkan kembali:"
+                    )
+                    return
+            
             # Save binding to Supabase
             payload = {
                 "chat_id": str(chat_id),
-                "username": text
+                "username": target_username
             }
             query_supabase("telegram_bindings", method="POST", body=payload)
             if chat_id in user_states:
@@ -424,7 +480,7 @@ def handle_bot_message(bot_token: str, message: dict):
             send_telegram_reply(
                 bot_token, 
                 chat_id, 
-                f"✅ <b>Akun berhasil dihubungkan!</b>\n\nAkun Telegram Anda sekarang terhubung dengan username: <b>{text}</b>.\n\nKetik /start untuk membuka menu asisten skincare Anda!"
+                f"✅ <b>Akun berhasil dihubungkan!</b>\n\nAkun Telegram Anda sekarang terhubung dengan username: <b>{target_username}</b>.\n\nKetik /start untuk membuka menu asisten skincare Anda!"
             )
             return
         else:
