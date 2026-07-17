@@ -363,9 +363,9 @@ def handle_photo_message(bot_token: str, chat_id: int, photo: list):
         active_ingredients = scan_result.get("active_ingredients", [])
         ingredients_str = ", ".join(active_ingredients) if isinstance(active_ingredients, list) else str(active_ingredients)
         
-        # Save state to continue WAITING_OPENED_AT
+        # Save state to continue WAITING_EXPIRY
         user_states[chat_id] = {
-            "state": "WAITING_OPENED_AT",
+            "state": "WAITING_EXPIRY",
             "data": {
                 "brand": brand,
                 "name": name,
@@ -378,8 +378,7 @@ def handle_photo_message(bot_token: str, chat_id: int, photo: list):
             f"Brand: <b>{brand}</b>\n"
             f"Nama: <b>{name}</b>\n"
             f"Bahan Aktif: <code>{ingredients_str}</code>\n\n"
-            "Lanjut! Kapan produk ini <b>Segelnya Dibuka</b>?\n"
-            "Masukkan dengan format <code>YYYY-MM-DD</code> (contoh: <code>2026-05-20</code>) atau ketik <b>hari ini</b> untuk memakai tanggal hari ini:"
+            "Lanjut! Masukkan <b>Bulan & Tahun Kedaluwarsa (Expired)</b> produk ini dengan format <code>MM-YYYY</code> (contoh: ketik <code>08-2027</code> jika kadaluarsa Agustus 2027):"
         )
         send_telegram_reply(bot_token, chat_id, reply_msg)
         
@@ -444,12 +443,12 @@ def handle_bot_message(bot_token: str, message: dict):
             
             if detected_ingredients:
                 state_data["ingredients"] = detected_ingredients
-                state_info["state"] = "WAITING_OPENED_AT"
+                state_info["state"] = "WAITING_EXPIRY"
                 send_telegram_reply(
                     bot_token, 
                     chat_id, 
                     f"✨ <b>Bahan Aktif dideteksi Gemini AI:</b>\n<code>{detected_ingredients}</code>\n\n"
-                    "Lanjut! Kapan produk ini <b>Segelnya Dibuka</b>? Masukkan dengan format <code>YYYY-MM-DD</code> (contoh: <code>2026-05-20</code>) atau ketik <b>hari ini</b> untuk memakai tanggal hari ini:"
+                    "Lanjut! Masukkan <b>Bulan & Tahun Kedaluwarsa (Expired)</b> produk ini dengan format <code>MM-YYYY</code> (contoh: ketik <code>08-2027</code> jika kadaluarsa Agustus 2027):"
                 )
             else:
                 # Gemini could not detect it, fallback to manual input
@@ -464,93 +463,77 @@ def handle_bot_message(bot_token: str, message: dict):
 
         elif current_state == "WAITING_INGREDIENTS":
             state_data["ingredients"] = "" if text.lower() == "tidak ada" else text
-            state_info["state"] = "WAITING_OPENED_AT"
+            state_info["state"] = "WAITING_EXPIRY"
             send_telegram_reply(
                 bot_token, 
                 chat_id, 
-                "👍 Bahan aktif disimpan!\n\nKapan produk ini <b>Segelnya Dibuka</b>? Masukkan dengan format <code>YYYY-MM-DD</code> (contoh: <code>2026-05-20</code>) atau ketik <b>hari ini</b> untuk memakai tanggal hari ini:"
+                "👍 Bahan aktif disimpan!\n\nMasukkan <b>Bulan & Tahun Kedaluwarsa (Expired)</b> produk ini dengan format <code>MM-YYYY</code> (contoh: ketik <code>08-2027</code> jika kadaluarsa Agustus 2027):"
             )
             return
 
-        elif current_state == "WAITING_OPENED_AT":
-            opened_date = ""
-            if text.lower() in ["hari ini", "today"]:
-                opened_date = date.today().strftime("%Y-%m-%d")
-            else:
-                try:
-                    # Validate format YYYY-MM-DD
-                    datetime.strptime(text, "%Y-%m-%d")
-                    opened_date = text
-                except ValueError:
-                    send_telegram_reply(
-                        bot_token, 
-                        chat_id, 
-                        "❌ Format tanggal salah! Gunakan format <code>YYYY-MM-DD</code> (contoh: <code>2026-05-20</code>) atau ketik <b>hari ini</b>:"
-                    )
-                    return
-
-            state_data["opened_at"] = opened_date
-            state_info["state"] = "WAITING_PAO"
-            send_telegram_reply(
-                bot_token, 
-                chat_id, 
-                "👍 Tanggal dibuka disimpan!\n\nTerakhir, masukkan **Masa PAO (Period After Opening)** dalam satuan bulan (contoh: ketik <code>12</code> jika masa pakainya 12 bulan setelah dibuka):"
-            )
-            return
-
-        elif current_state == "WAITING_PAO":
+        elif current_state == "WAITING_EXPIRY":
             try:
-                pao_val = int(text)
-                if pao_val <= 0 or pao_val > 120:
+                today = date.today()
+                # Parse Month & Year
+                clean_text = text.replace("/", "-").strip()
+                parts = clean_text.split("-")
+                if len(parts) != 2:
                     raise ValueError()
-            except ValueError:
+                
+                exp_month = int(parts[0])
+                exp_year = int(parts[1])
+                
+                # Support simple 2-digit years (e.g. 27 -> 2027)
+                if exp_year < 100:
+                    exp_year += 2000
+                    
+                if not (1 <= exp_month <= 12) or exp_year < 2000:
+                    raise ValueError()
+                
+                # Expiry date target
+                expiry_dt = date(exp_year, exp_month, 1)
+                
+                # Calculate difference in months between today and expiry
+                diff_months = (exp_year - today.year) * 12 + (exp_month - today.month)
+                if diff_months < 0:
+                    diff_months = 0  # Already expired
+                
+                # We save opened_at as today, and pao_months as the difference in months
+                opened_at_str = today.strftime("%Y-%m-%d")
+                
+                # Save to Supabase
+                brand = state_data["brand"]
+                name = state_data["name"]
+                ingredients = state_data["ingredients"]
+                
+                payload = {
+                    "brand": brand,
+                    "name": name,
+                    "ingredients": ingredients,
+                    "opened_at": opened_at_str,
+                    "pao_months": diff_months
+                }
+                
+                query_supabase("products", method="POST", body=payload)
+                del user_states[chat_id]
+                
+                success_msg = (
+                    "🎉 <b>Produk Berhasil Disimpan ke Supabase Cloud!</b>\n\n"
+                    f"Brand: <b>{brand}</b>\n"
+                    f"Nama: <b>{name}</b>\n"
+                    f"Bahan Aktif: <b>{ingredients or 'Tidak ada'}</b>\n"
+                    f"Kadaluarsa: <b>{exp_month:02d}-{exp_year}</b> (Sisa sekitar {diff_months} Bulan)\n\n"
+                    "Produk sekarang aktif terdaftar di menu /exp dan jadwal website!"
+                )
+                send_telegram_reply(bot_token, chat_id, success_msg)
+                return
+            except Exception as e:
                 send_telegram_reply(
                     bot_token, 
                     chat_id, 
-                    "❌ Masukkan angka bulan yang valid (contoh: 12 atau 6):"
+                    "❌ Format tanggal salah! Harap masukkan Bulan & Tahun dengan format <code>MM-YYYY</code> (contoh: ketik <code>08-2027</code>):"
                 )
                 return
-
-            # Save to Supabase
-            brand = state_data["brand"]
-            name = state_data["name"]
-            ingredients = state_data["ingredients"]
-            opened_at = state_data["opened_at"]
-            
-            payload = {
-                "brand": brand,
-                "name": name,
-                "ingredients": ingredients,
-                "opened_at": opened_at,
-                "pao_months": pao_val
-            }
-            
-            query_supabase("products", method="POST", body=payload)
-            del user_states[chat_id]
-            
-            success_msg = (
-                "🎉 <b>Produk Berhasil Disimpan ke Supabase Cloud!</b>\n\n"
-                f"Brand: <b>{brand}</b>\n"
-                f"Nama: <b>{name}</b>\n"
-                f"Bahan Aktif: <b>{ingredients or 'Tidak ada'}</b>\n"
-                f"Tanggal Dibuka: <b>{opened_at}</b>\n"
-                f"Masa PAO: <b>{pao_val} Bulan</b>\n"
-            )
-            
-            # Calculate expiry date
-            try:
-                opened_dt = datetime.strptime(opened_at, "%Y-%m-%d")
-                month = opened_dt.month + pao_val
-                year = opened_dt.year + (month - 1) // 12
-                month = ((month - 1) % 12) + 1
-                expiry_dt = opened_dt.replace(year=year, month=month)
-                success_msg += f"Tanggal Expired: <b>{expiry_dt.strftime('%d %b %Y')}</b>\n\n"
-            except:
-                pass
-                
-            success_msg += "Produk sekarang aktif terdaftar di menu /exp dan jadwal website!"
-            send_telegram_reply(bot_token, chat_id, success_msg)
-            return
 
         # --- FLOW SAFETY CHECK ---
         elif current_state == "WAITING_SAFETY_A":
