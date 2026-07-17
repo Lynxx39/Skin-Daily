@@ -39,8 +39,11 @@ def startup_event():
 
 # Parse Supabase credentials from frontend/.env
 def get_supabase_credentials():
-    url = ""
-    key = ""
+    url = os.environ.get("VITE_SUPABASE_URL")
+    key = os.environ.get("VITE_SUPABASE_PUBLISHABLE_KEY")
+    if url and key:
+        return url, key
+        
     try:
         env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", ".env")
         if os.path.exists(env_path):
