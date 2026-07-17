@@ -141,6 +141,48 @@ def call_gemini_to_find_ingredients(brand: str, name: str) -> str:
         print(f"Gemini auto-ingredients fetch failed: {e}")
         return ""
 
+# Call Gemini API directly for image analysis
+def call_gemini_api_for_image(prompt: str, image_bytes: bytes, mime_type: str) -> dict:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return {"status": "ERROR", "reason": "Gemini API Key is not configured."}
+        
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
+    import base64
+    base64_image = base64.b64encode(image_bytes).decode("utf-8")
+    
+    parts = [
+        {"text": prompt},
+        {
+            "inlineData": {
+                "mimeType": mime_type,
+                "data": base64_image
+            }
+        }
+    ]
+    
+    payload = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "responseMimeType": "application/json"
+        }
+    }
+    
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=30) as response:
+            res_body = json.loads(response.read().decode("utf-8"))
+            text_response = res_body["candidates"][0]["content"]["parts"][0]["text"]
+            return json.loads(text_response.strip())
+    except Exception as e:
+        return {"status": "ERROR", "reason": f"Gagal memanggil Gemini API: {str(e)}"}
+
 # Call Gemini API to analyze ALL products at once
 def call_gemini_for_safety_all(products: list) -> dict:
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -262,13 +304,101 @@ def send_telegram_reply(bot_token: str, chat_id: int, text: str):
 # Dictionary to hold user states for interactive commands
 user_states = {}
 
+def handle_photo_message(bot_token: str, chat_id: int, photo: list):
+    send_telegram_reply(bot_token, chat_id, "📸 <i>Menerima foto produk. Mengunduh dan menganalisis label/kemasan menggunakan Gemini AI...</i>")
+    
+    try:
+        # Get largest photo size
+        largest_photo = photo[-1]
+        file_id = largest_photo["file_id"]
+        
+        # Get file path from Telegram
+        get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+        req = urllib.request.Request(get_file_url)
+        with urllib.request.urlopen(req, timeout=15) as res:
+            res_body = json.loads(res.read().decode("utf-8"))
+            if not res_body.get("ok"):
+                send_telegram_reply(bot_token, chat_id, "❌ Gagal mendapatkan informasi file dari Telegram.")
+                return
+            file_path = res_body["result"]["file_path"]
+            
+        # Download the file
+        download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        req_download = urllib.request.Request(download_url)
+        with urllib.request.urlopen(req_download, timeout=30) as res_img:
+            image_bytes = res_img.read()
+            
+        # Call Gemini
+        prompt = """
+        Analisis gambar skincare ini. Ekstrak informasi berikut dan kembalikan hanya dalam format JSON terstruktur:
+        {
+          "brand": "Nama Brand/Merek produk (contoh: 'Hada Labo', 'Facetology', 'The Ordinary')",
+          "name": "Nama lengkap produk (contoh: 'Gokujyun Premium Lotion', 'Triple Care Sunscreen')",
+          "active_ingredients": ["Daftar bahan aktif utama yang tertera, contoh: 'Niacinamide', 'Hyaluronic Acid', 'Retinol', 'Salicylic Acid'"]
+        }
+        
+        PENTING:
+        - Jika tulisan tidak jelas, berikan tebakan terbaik Anda.
+        - Kembalikan HANYA JSON object. Jangan tambahkan penjelasan lain.
+        """
+        
+        # Determine mime type from file path extension
+        mime_type = "image/jpeg"
+        if file_path.lower().endswith(".png"):
+            mime_type = "image/png"
+        elif file_path.lower().endswith(".webp"):
+            mime_type = "image/webp"
+            
+        scan_result = call_gemini_api_for_image(prompt, image_bytes, mime_type)
+        
+        if "status" in scan_result and scan_result["status"] == "ERROR":
+            send_telegram_reply(bot_token, chat_id, f"❌ Gagal menganalisis gambar: {scan_result.get('reason')}")
+            return
+            
+        brand = scan_result.get("brand", "Unknown")
+        name = scan_result.get("name", "Unknown")
+        active_ingredients = scan_result.get("active_ingredients", [])
+        ingredients_str = ", ".join(active_ingredients) if isinstance(active_ingredients, list) else str(active_ingredients)
+        
+        # Save state to continue WAITING_OPENED_AT
+        user_states[chat_id] = {
+            "state": "WAITING_OPENED_AT",
+            "data": {
+                "brand": brand,
+                "name": name,
+                "ingredients": ingredients_str
+            }
+        }
+        
+        reply_msg = (
+            "✨ <b>Hasil Deteksi Label Produk oleh Gemini AI:</b>\n\n"
+            f"Brand: <b>{brand}</b>\n"
+            f"Nama: <b>{name}</b>\n"
+            f"Bahan Aktif: <code>{ingredients_str}</code>\n\n"
+            "Lanjut! Kapan produk ini <b>Segelnya Dibuka</b>?\n"
+            "Masukkan dengan format <code>YYYY-MM-DD</code> (contoh: <code>2026-05-20</code>) atau ketik <b>hari ini</b> untuk memakai tanggal hari ini:"
+        )
+        send_telegram_reply(bot_token, chat_id, reply_msg)
+        
+    except Exception as e:
+        send_telegram_reply(bot_token, chat_id, f"❌ Terjadi kesalahan saat memproses gambar: {str(e)}")
+
 # Process incoming bot command
 def handle_bot_message(bot_token: str, message: dict):
     chat = message.get("chat", {})
     chat_id = chat.get("id")
     text = message.get("text", "").strip()
     
-    if not chat_id or not text:
+    if not chat_id:
+        return
+
+    # Check for photo messages first to support product scanning
+    photo = message.get("photo")
+    if photo:
+        handle_photo_message(bot_token, chat_id, photo)
+        return
+        
+    if not text:
         return
 
     # Check for cancel command at any time
@@ -596,6 +726,7 @@ def handle_bot_message(bot_token: str, message: dict):
             "🔬 /safety_all - Analisis keamanan SEMUA produk sekaligus (AI)\n"
             "➕ /tambah_produk - Tambah produk baru secara interaktif (AI Auto-detect bahan aktif)\n"
             "📋 /daftar_produk - Tampilkan seluruh produk Anda\n\n"
+            "📸 <b>Kirim Foto Produk</b> - Anda juga dapat langsung mengirimkan foto kemasan/label produk Anda ke bot untuk dideteksi oleh Gemini AI secara otomatis!\n\n"
             "<i>Ketik /cancel kapan saja jika ingin membatalkan pengisian data.</i>"
         )
         send_telegram_reply(bot_token, chat_id, welcome_msg)
