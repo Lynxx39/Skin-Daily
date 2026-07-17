@@ -872,7 +872,7 @@ def handle_bot_message(bot_token: str, message: dict):
             msg += "<b>⚠️ Konflik Kandungan Ditemukan:</b>\n"
             for c in conflicts:
                 badge = "💥" if c.get("status") == "BAHAYA" else "⚠️"
-                msg += f"\n{badge} <b>{c.get('product_a', '?')} × {c.get('product_b', '?')}</b>\n"
+                msg += f"\n{badge} <b>{c.get('product_a', '?')} ⚡ {c.get('product_b', '?')}</b>\n"
                 msg += f"   Status: <b>{c.get('status', '?')}</b>\n"
                 msg += f"   {c.get('reason', '')}\n"
         else:
