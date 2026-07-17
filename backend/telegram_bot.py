@@ -6,7 +6,7 @@ import json
 import os
 from datetime import datetime, date
 
-from .database import get_setting, save_routine_steps
+
 
 # Manually load env variables from backend/.env
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -19,7 +19,7 @@ if os.path.exists(env_path):
                 os.environ[k.strip()] = v.strip()
 
 from datetime import datetime, date
-from .database import get_setting, save_routine_steps
+
 
 # Parse Supabase credentials from frontend/.env
 def get_supabase_credentials():
@@ -993,25 +993,8 @@ def handle_bot_message(bot_token: str, message: dict):
                 except Exception as e:
                     print(f"Supabase POST error: {e}")
             
-            # Save to SQLite local database products first to avoid empty products JOIN issue
-            try:
-                from .database import get_db_connection
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM products")
-                for p in products:
-                    cursor.execute("""
-                    INSERT OR REPLACE INTO products (id, brand, name, ingredients, opened_at, pao_months)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """, (p['id'], p['brand'], p['name'], p.get('ingredients'), p.get('opened_at'), p.get('pao_months')))
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                print(f"Bot products SQLite sync failed: {e}")
-
-            # Save to SQLite local database
-            save_routine_steps("AM", am_products)
-            save_routine_steps("PM", pm_products)
+            # No-op for SQLite, everything is cloud-based in Supabase now
+            pass
             
             send_telegram_reply(
                 bot_token,

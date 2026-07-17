@@ -19,16 +19,8 @@ if os.path.exists(env_path):
                 k, v = line.split("=", 1)
                 os.environ[k.strip()] = v.strip()
 
-from .database import (
-    init_db, add_product, get_all_products, get_product,
-    update_product, delete_product, get_routine, save_routine_steps,
-    add_routine_log, get_recent_logs, get_setting, set_setting
-)
 from .telegram_service import send_telegram_message
 from .telegram_bot import start_bot_thread
-
-# Initialize DB
-init_db()
 
 app = FastAPI(title="Skindaily API", description="Personal Skincare Tracker & Layering Analyzer")
 
@@ -437,7 +429,6 @@ def check_safety_all():
 @app.post("/api/routine/apply-ai-recommendation")
 def apply_ai_recommendation():
     """Parse AI recommendation dan auto-setup routine berdasarkan analisis keamanan"""
-    sync_supabase_to_sqlite()
     products = query_supabase("products?select=*")
     if not products or len(products) < 2:
         raise HTTPException(status_code=400, detail="Minimum 2 produk dibutuhkan untuk analisis.")
@@ -520,9 +511,8 @@ def apply_ai_recommendation():
             except Exception as e:
                 print(f"Supabase POST error, will use SQLite backup: {e}")
         
-        # Also save to SQLite for backup
-        save_routine_steps("AM", am_products)
-        save_routine_steps("PM", pm_products)
+        # No-op for SQLite
+        pass
         
         return {
             "status": "success",
@@ -534,66 +524,24 @@ def apply_ai_recommendation():
         print(f"Error in apply_ai_recommendation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Gagal parse rekomendasi: {str(e)}")
 
-def sync_supabase_to_sqlite():
-    try:
-        # 1. Sync products
-        products = query_supabase("products?select=*")
-        if products:
-            from .database import get_db_connection
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM products")
-            for p in products:
-                cursor.execute("""
-                INSERT OR REPLACE INTO products (id, brand, name, ingredients, opened_at, pao_months)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, (p['id'], p['brand'], p['name'], p.get('ingredients'), p.get('opened_at'), p.get('pao_months')))
-            conn.commit()
-            conn.close()
-            print(f"Synced {len(products)} products to SQLite.")
-            
-        # 2. Sync routine_steps
-        steps = query_supabase("routine_steps?select=*")
-        from .database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Read existing frequency_notes from SQLite first to preserve them
-        cursor.execute("SELECT product_id, routine_type, frequency_notes FROM routine_steps")
-        existing_notes = {(row[0], row[1]): row[2] for row in cursor.fetchall() if row[2]}
-        
-        cursor.execute("DELETE FROM routine_steps")
-        if steps:
-            for s in steps:
-                prod_id = s['product_id']
-                r_type = s['routine_type']
-                # Try to preserve note, fallback to s.get('frequency_notes')
-                note = existing_notes.get((prod_id, r_type)) or s.get('frequency_notes')
-                cursor.execute("""
-                INSERT OR REPLACE INTO routine_steps (id, product_id, routine_type, step_order, frequency_notes)
-                VALUES (?, ?, ?, ?, ?)
-                """, (s['id'], prod_id, r_type, s['step_order'], note))
-        conn.commit()
-        conn.close()
-        print(f"Synced {len(steps) if steps else 0} routine_steps to SQLite.")
-    except Exception as e:
-        print(f"Error syncing Supabase to SQLite: {e}")
-
 @app.get("/api/routine")
 def fetch_routine(routine_type: str = Query(..., regex="^(AM|PM)$")):
-    sync_supabase_to_sqlite()
-    steps = get_routine(routine_type)
+    # Fetch routine steps and their products directly from Supabase!
+    steps = query_supabase(f"routine_steps?select=*,products(*)&routine_type=eq.{routine_type}&order=step_order")
     
-    # Calculate days remaining for each product using opened_at and pao_months
     current_date = date.today()
-    
     processed_steps = []
+    
     for step in steps:
+        prod = step.get("products")
+        if not prod:
+            continue
+            
         days_remaining = None
         is_expired = False
         
-        opened_at_str = step.get("opened_at")
-        pao_months = step.get("pao_months")
+        opened_at_str = prod.get("opened_at")
+        pao_months = prod.get("pao_months")
         
         if opened_at_str and pao_months:
             try:
@@ -608,10 +556,10 @@ def fetch_routine(routine_type: str = Query(..., regex="^(AM|PM)$")):
                 
         processed_steps.append({
             "step_order": step["step_order"],
-            "id": step["id"],
-            "brand": step["brand"],
-            "name": step["name"],
-            "ingredients": step["ingredients"],
+            "id": prod["id"],
+            "brand": prod["brand"],
+            "name": prod["name"],
+            "ingredients": prod.get("ingredients") or "",
             "frequency_notes": step.get("frequency_notes"),
             "days_remaining": days_remaining,
             "is_expired": is_expired
@@ -634,8 +582,9 @@ def log_routine(logs: List[RoutineLogSchema]):
     details = []
     
     for log in logs:
-        add_routine_log(log.product_id, log.status)
-        prod = get_product(log.product_id)
+        # Get product details directly from Supabase
+        res = query_supabase(f"products?id=eq.{log.product_id}")
+        prod = res[0] if res else None
         prod_name = f"{prod['brand']} {prod['name']}" if prod else f"Product #{log.product_id}"
         
         if log.status == "COMPLETED":
