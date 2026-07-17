@@ -34,7 +34,8 @@ app = FastAPI(title="Skindaily API", description="Personal Skincare Tracker & La
 
 @app.on_event("startup")
 def startup_event():
-    start_bot_thread()
+    if not os.environ.get("VERCEL"):
+        start_bot_thread()
 
 # Parse Supabase credentials from frontend/.env
 def get_supabase_credentials():
@@ -651,6 +652,41 @@ def log_routine(logs: List[RoutineLogSchema]):
         send_telegram_message(msg)
         
     return {"status": "success", "completed": completed_count, "skipped": skipped_count}
+
+@app.post("/api/telegram/webhook")
+def telegram_webhook(update: dict):
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        return {"status": "error", "message": "Bot token not configured"}
+    
+    message = update.get("message")
+    if message:
+        from .telegram_bot import handle_bot_message
+        handle_bot_message(bot_token, message)
+        
+    return {"status": "ok"}
+
+@app.get("/api/telegram/setup-webhook")
+def setup_webhook(url: str = Query(...)):
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+    webhook_url = f"{url.rstrip('/')}/api/telegram/webhook"
+    telegram_url = f"https://api.telegram.org/bot{bot_token}/setWebhook?url={webhook_url}"
+    
+    try:
+        import urllib.request
+        import json
+        req = urllib.request.Request(telegram_url)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res = json.loads(response.read().decode("utf-8"))
+            if res.get("ok"):
+                return {"status": "success", "message": f"Webhook set to {webhook_url}"}
+            else:
+                raise HTTPException(status_code=400, detail=f"Telegram error: {res}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to set webhook: {str(e)}")
 
 @app.post("/api/settings/telegram/test")
 def test_telegram(data: TelegramSettingsSchema):
