@@ -808,7 +808,7 @@ def handle_bot_message(bot_token: str, message: dict):
             
         send_telegram_reply(bot_token, chat_id, full_report)
         
-    elif text.startswith("/safety"):
+    elif text.startswith("/safety") and not text.startswith("/safety_all"):
         products = query_supabase("products?select=*")
         
         # Initialize state
