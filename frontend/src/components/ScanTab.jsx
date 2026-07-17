@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { supabase } from '../utils/supabase';
 
-export default function ScanTab({ API_BASE, onProductAdded }) {
+export default function ScanTab({ API_BASE, username, onProductAdded }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -58,20 +58,22 @@ export default function ScanTab({ API_BASE, onProductAdded }) {
   const save = async e => {
     e.preventDefault();
     if (!brand || !name) { setMessage({ ok: false, text: 'Brand dan Nama wajib diisi.' }); return; }
+    if (!username) { setMessage({ ok: false, text: 'Username tidak valid.' }); return; }
     setLoading(true); setMessage(null);
     const paoMonths = calcPaoMonths(opened, expiryMonth);
     try {
       const { data: ins, error } = await supabase.from('products').insert([{
         brand, name, ingredients: ing,
         opened_at: opened || null,
-        pao_months: paoMonths && paoMonths > 0 ? paoMonths : null
+        pao_months: paoMonths && paoMonths > 0 ? paoMonths : null,
+        username
       }]).select();
       if (error) { setMessage({ ok: false, text: error.message }); return; }
       const id = ins[0].id;
       for (const rt of [addAM && 'AM', addPM && 'PM'].filter(Boolean)) {
-        const { data: steps } = await supabase.from('routine_steps').select('*').eq('routine_type', rt);
+        const { data: steps } = await supabase.from('routine_steps').select('*').eq('routine_type', rt).eq('username', username);
         if (!(steps || []).find(s => s.product_id === id))
-          await supabase.from('routine_steps').insert([{ product_id: id, routine_type: rt, step_order: (steps || []).length + 1 }]);
+          await supabase.from('routine_steps').insert([{ product_id: id, routine_type: rt, step_order: (steps || []).length + 1, username }]);
       }
       setMessage({ ok: true, text: `"${brand} — ${name}" berhasil disimpan ke Supabase.` });
       setFile(null); setPreview(null); setScanResult(null); setAddAM(false); setAddPM(false); setExpiryMonth('');

@@ -394,6 +394,51 @@ def handle_bot_message(bot_token: str, message: dict):
     if not chat_id:
         return
 
+    # Check for cancel command at any time
+    if text.startswith("/cancel"):
+        if chat_id in user_states:
+            del user_states[chat_id]
+        send_telegram_reply(bot_token, chat_id, "❌ <b>Proses dibatalkan.</b>")
+        return
+
+    # Check Telegram binding first
+    bindings = query_supabase(f"telegram_bindings?chat_id=eq.{chat_id}")
+    is_bound = len(bindings) > 0
+    username = bindings[0]["username"] if is_bound else None
+
+    if not is_bound:
+        # If the user is currently entering their username:
+        if chat_id in user_states and user_states[chat_id].get("state") == "WAITING_TELEGRAM_BINDING":
+            if not text or " " in text:
+                send_telegram_reply(bot_token, chat_id, "❌ Username tidak valid. Masukkan username Anda dari website Skindaily tanpa spasi:")
+                return
+            
+            # Save binding to Supabase
+            payload = {
+                "chat_id": str(chat_id),
+                "username": text
+            }
+            query_supabase("telegram_bindings", method="POST", body=payload)
+            if chat_id in user_states:
+                del user_states[chat_id]
+            send_telegram_reply(
+                bot_token, 
+                chat_id, 
+                f"✅ <b>Akun berhasil dihubungkan!</b>\n\nAkun Telegram Anda sekarang terhubung dengan username: <b>{text}</b>.\n\nKetik /start untuk membuka menu asisten skincare Anda!"
+            )
+            return
+        else:
+            # Force binding
+            user_states[chat_id] = {"state": "WAITING_TELEGRAM_BINDING", "data": {}}
+            send_telegram_reply(
+                bot_token, 
+                chat_id, 
+                "🤖 <b>Halo! Skindaily Bot belum terhubung dengan akun Anda.</b>\n\n"
+                "Silakan masukkan <b>Username</b> Anda yang terdaftar di website Skindaily untuk menghubungkan akun Telegram ini:\n\n"
+                "<i>(Jika belum memiliki akun, buka website Skindaily Anda di HP/browser dan buat username baru terlebih dahulu).</i>"
+            )
+            return
+
     # Check for photo messages first to support product scanning
     photo = message.get("photo")
     if photo:
@@ -401,13 +446,6 @@ def handle_bot_message(bot_token: str, message: dict):
         return
         
     if not text:
-        return
-
-    # Check for cancel command at any time
-    if text.startswith("/cancel"):
-        if chat_id in user_states:
-            del user_states[chat_id]
-        send_telegram_reply(bot_token, chat_id, "❌ <b>Proses pengisian data dibatalkan.</b>")
         return
 
     # If user is in an active conversational state, handle that first!
@@ -511,7 +549,8 @@ def handle_bot_message(bot_token: str, message: dict):
                     "name": name,
                     "ingredients": ingredients,
                     "opened_at": opened_at_str,
-                    "pao_months": diff_months
+                    "pao_months": diff_months,
+                    "username": username
                 }
                 
                 query_supabase("products", method="POST", body=payload)
@@ -718,8 +757,8 @@ def handle_bot_message(bot_token: str, message: dict):
         send_telegram_reply(bot_token, chat_id, welcome_msg)
         
     elif text.startswith("/status"):
-        steps_am = query_supabase("routine_steps?select=*,products(*)&routine_type=eq.AM&order=step_order")
-        steps_pm = query_supabase("routine_steps?select=*,products(*)&routine_type=eq.PM&order=step_order")
+        steps_am = query_supabase(f"routine_steps?select=*,products(*)&routine_type=eq.AM&username=eq.{username}&order=step_order")
+        steps_pm = query_supabase(f"routine_steps?select=*,products(*)&routine_type=eq.PM&username=eq.{username}&order=step_order")
         
         msg = "<b>🗓️ Jadwal Rutinitas Skincare Hari Ini</b>\n\n"
         
@@ -742,7 +781,7 @@ def handle_bot_message(bot_token: str, message: dict):
         send_telegram_reply(bot_token, chat_id, msg)
         
     elif text.startswith("/exp"):
-        products = query_supabase("products?select=*")
+        products = query_supabase(f"products?select=*&username=eq.{username}")
         
         if not products:
             send_telegram_reply(bot_token, chat_id, "ℹ️ Belum ada produk terdaftar di inventaris cloud.")
@@ -792,7 +831,7 @@ def handle_bot_message(bot_token: str, message: dict):
         send_telegram_reply(bot_token, chat_id, full_report)
         
     elif text.startswith("/safety") and not text.startswith("/safety_all"):
-        products = query_supabase("products?select=*")
+        products = query_supabase(f"products?select=*&username=eq.{username}")
         
         # Initialize state
         user_states[chat_id] = {
@@ -827,7 +866,7 @@ def handle_bot_message(bot_token: str, message: dict):
         )
         
     elif text.startswith("/safety_all"):
-        products = query_supabase("products?select=*")
+        products = query_supabase(f"products?select=*&username=eq.{username}")
         if not products:
             send_telegram_reply(bot_token, chat_id, "ℹ️ Belum ada produk terdaftar di gudang cloud. Tambahkan produk dulu dengan /tambah_produk.")
             return
@@ -871,7 +910,7 @@ def handle_bot_message(bot_token: str, message: dict):
             send_telegram_reply(bot_token, chat_id, msg)
 
     elif text.startswith("/terapkan_rekomendasi"):
-        products = query_supabase("products?select=*")
+        products = query_supabase(f"products?select=*&username=eq.{username}")
         if not products or len(products) < 2:
             send_telegram_reply(bot_token, chat_id, "⚠️ Minimal harus ada 2 produk terdaftar untuk dapat mengatur rutinitas otomatis.")
             return
@@ -948,7 +987,8 @@ def handle_bot_message(bot_token: str, message: dict):
                 step = {
                     "product_id": int(p['id']) if isinstance(p, dict) else int(p),
                     "routine_type": "AM",
-                    "step_order": i+1
+                    "step_order": i+1,
+                    "username": username
                 }
                 am_steps.append(step)
                 
@@ -957,7 +997,8 @@ def handle_bot_message(bot_token: str, message: dict):
                 step = {
                     "product_id": int(p['id']) if isinstance(p, dict) else int(p),
                     "routine_type": "PM",
-                    "step_order": i+1
+                    "step_order": i+1,
+                    "username": username
                 }
                 pm_steps.append(step)
             
@@ -965,8 +1006,8 @@ def handle_bot_message(bot_token: str, message: dict):
             
             # Delete existing routines and insert new ones in Supabase
             try:
-                query_supabase("routine_steps?routine_type=eq.AM", "DELETE")
-                query_supabase("routine_steps?routine_type=eq.PM", "DELETE")
+                query_supabase(f"routine_steps?routine_type=eq.AM&username=eq.{username}", "DELETE")
+                query_supabase(f"routine_steps?routine_type=eq.PM&username=eq.{username}", "DELETE")
             except Exception as e:
                 print(f"Delete error: {e}")
             
@@ -992,7 +1033,7 @@ def handle_bot_message(bot_token: str, message: dict):
 
 
     elif text.startswith("/daftar_produk"):
-        products = query_supabase("products?select=*")
+        products = query_supabase(f"products?select=*&username=eq.{username}")
         if not products:
             send_telegram_reply(bot_token, chat_id, "ℹ️ Belum ada produk terdaftar di gudang cloud.")
             return

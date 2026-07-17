@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../utils/supabase';
 
-export default function InventoryTab({ API_BASE, products, fetchProducts, routineAM, routinePM, fetchRoutines }) {
+export default function InventoryTab({ API_BASE, products, username, fetchProducts, routineAM, routinePM, fetchRoutines }) {
   const [brand, setBrand] = useState('');
   const [name, setName] = useState('');
   const [ing, setIng] = useState('');
@@ -44,13 +44,15 @@ export default function InventoryTab({ API_BASE, products, fetchProducts, routin
   const addProduct = async e => {
     e.preventDefault();
     if (!brand || !name) { setMsg({ ok: false, text: 'Brand dan Nama wajib.' }); return; }
+    if (!username) { setMsg({ ok: false, text: 'Username wajib.' }); return; }
     setSaving(true); setMsg(null);
     const paoMonths = calcPaoMonths(opened, expiryMonth);
     try {
       const { error } = await supabase.from('products').insert([{
         brand, name, ingredients: ing,
         opened_at: opened || null,
-        pao_months: paoMonths && paoMonths > 0 ? paoMonths : null
+        pao_months: paoMonths && paoMonths > 0 ? paoMonths : null,
+        username
       }]);
       if (!error) {
         setMsg({ ok: true, text: `"${brand} — ${name}" tersimpan.` });
@@ -70,12 +72,13 @@ export default function InventoryTab({ API_BASE, products, fetchProducts, routin
   };
 
   const toggleRoutine = async (productId, rt) => {
-    const { data: existing } = await supabase.from('routine_steps').select('*').eq('product_id', productId).eq('routine_type', rt);
+    if (!username) return;
+    const { data: existing } = await supabase.from('routine_steps').select('*').eq('product_id', productId).eq('routine_type', rt).eq('username', username);
     if (existing?.length > 0) {
-      await supabase.from('routine_steps').delete().eq('product_id', productId).eq('routine_type', rt);
+      await supabase.from('routine_steps').delete().eq('product_id', productId).eq('routine_type', rt).eq('username', username);
     } else {
-      const { data: all } = await supabase.from('routine_steps').select('*').eq('routine_type', rt);
-      await supabase.from('routine_steps').insert([{ product_id: productId, routine_type: rt, step_order: (all || []).length + 1 }]);
+      const { data: all } = await supabase.from('routine_steps').select('*').eq('routine_type', rt).eq('username', username);
+      await supabase.from('routine_steps').insert([{ product_id: productId, routine_type: rt, step_order: (all || []).length + 1, username }]);
     }
     fetchRoutines();
   };

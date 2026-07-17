@@ -39,6 +39,8 @@ export default function App() {
   const [routinePM, setRoutinePM] = useState([]);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem('skindaily-theme') || 'dark');
+  const [username, setUsername] = useState(() => localStorage.getItem('skindaily-username') || '');
+  const [showTeleModal, setShowTeleModal] = useState(false);
 
   // Apply theme to document root
   useEffect(() => {
@@ -49,34 +51,91 @@ export default function App() {
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
 
   const fetchProducts = async () => {
-    const { data } = await supabase.from('products').select('*').order('brand');
+    if (!username) return;
+    const { data } = await supabase.from('products').select('*').eq('username', username).order('brand');
     setProducts(data || []);
   };
 
   const fetchRoutines = async () => {
+    if (!username) return;
     const mapSteps = d => (d || []).filter(s => s.products).map(s => ({
       step_order: s.step_order, id: s.products.id, step_id: s.id,
       brand: s.products.brand, name: s.products.name,
       ingredients: s.products.ingredients, opened_at: s.products.opened_at, pao_months: s.products.pao_months,
     }));
     const [{ data: am }, { data: pm }] = await Promise.all([
-      supabase.from('routine_steps').select('*, products(*)').eq('routine_type', 'AM').order('step_order'),
-      supabase.from('routine_steps').select('*, products(*)').eq('routine_type', 'PM').order('step_order'),
+      supabase.from('routine_steps').select('*, products(*)').eq('routine_type', 'AM').eq('username', username).order('step_order'),
+      supabase.from('routine_steps').select('*, products(*)').eq('routine_type', 'PM').eq('username', username).order('step_order'),
     ]);
     setRoutineAM(mapSteps(am)); setRoutinePM(mapSteps(pm));
   };
 
   const loadAllData = async (silent = false) => {
+    if (!username) return;
     if (!silent) setLoading(true);
     await Promise.all([fetchProducts(), fetchRoutines()]);
     if (!silent) setLoading(false);
   };
 
-  useEffect(() => { loadAllData(); }, []);
+  useEffect(() => {
+    if (username) {
+      loadAllData();
+    }
+  }, [username]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('skindaily-username');
+    setUsername('');
+    setProducts([]);
+    setRoutineAM([]);
+    setRoutinePM([]);
+  };
 
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
+  if (!username) {
+    return (
+      <div style={{ maxWidth: 430, margin: '0 auto', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div className="s-card" style={{ padding: 30, width: '100%', display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'center', boxShadow: '0 8px 32px 0 rgba(0,0,0,0.2)' }}>
+          <div>
+            <h1 className="serif" style={{ margin: '0 0 6px', fontSize: '2.4rem', fontWeight: 700, color: 'var(--text-hi)', letterSpacing: '-0.02em' }}>
+              Skindaily<span style={{ color: 'var(--color-gold)' }}>.</span>
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-lo)', lineHeight: 1.5 }}>
+              Personal Skincare Tracker & Layering Safety Analyzer
+            </p>
+          </div>
+          <hr className="rule" />
+          <form onSubmit={e => {
+            e.preventDefault();
+            const val = e.target.usernameInput.value.trim().toLowerCase();
+            if (val) {
+              localStorage.setItem('skindaily-username', val);
+              setUsername(val);
+            }
+          }} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ textAlign: 'left' }}>
+              <p className="section-label" style={{ marginBottom: 6 }}>Username Baru / Lama</p>
+              <input
+                name="usernameInput"
+                className="s-input"
+                placeholder="Masukkan username Anda..."
+                required
+                pattern="^[a-zA-Z0-9_]+$"
+                title="Hanya huruf, angka, dan underscore (tanpa spasi)"
+                style={{ fontSize: '0.86rem', padding: '12px 14px' }}
+              />
+            </div>
+            <button type="submit" className="btn btn-gold" style={{ width: '100%', padding: '13px', fontSize: '0.86rem' }}>
+               Mulai Lacak Skincare ✦
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 430, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -96,9 +155,14 @@ export default function App() {
         {/* Top row */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
               <span className="live-dot" />
-              <span style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-sage)' }}>Synced</span>
+              <span style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-sage)' }}>
+                User: {username}
+              </span>
+              <button onClick={handleLogout} className="btn-ghost" style={{ padding: '0 4px', fontSize: '0.6rem', border: 'none', background: 'none', color: '#D4736F', cursor: 'pointer', textDecoration: 'underline' }}>
+                (Keluar)
+              </button>
             </div>
             <h1 className="serif" style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1, color: 'var(--text-hi)' }}>
               Skindaily<span style={{ color: 'var(--color-gold)' }}>.</span>
@@ -108,19 +172,23 @@ export default function App() {
             </p>
           </div>
 
-          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-            <button onClick={toggleTheme} className="btn-theme" title={theme === 'dark' ? 'Ganti ke Tema Terang' : 'Ganti ke Tema Gelap'}>
-              {theme === 'dark' ? (
-                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-                </svg>
-              ) : (
-                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
-                </svg>
-              )}
-            </button>
-            <div className="tag tag-gold">Supabase v2</div>
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => setShowTeleModal(true)} className="btn-theme" title="Integrasi Telegram" style={{ padding: '5px 8px', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: 4, height: 28 }}>
+                🤖 Bot Tele
+              </button>
+              <button onClick={toggleTheme} className="btn-theme" title={theme === 'dark' ? 'Ganti ke Tema Terang' : 'Ganti ke Tema Gelap'} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {theme === 'dark' ? (
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                  </svg>
+                )}
+              </button>
+            </div>
             <p style={{ margin: 0, fontSize: '0.62rem', color: 'var(--text-lo)' }}>{products.length} produk</p>
           </div>
         </div>
@@ -166,13 +234,39 @@ export default function App() {
           </div>
         ) : (
           <div className="page-in" key={activeTab}>
-            {activeTab === 'routine'   && <RoutineTab API_BASE={API_BASE} />}
-            {activeTab === 'scan'      && <ScanTab API_BASE={API_BASE} onProductAdded={loadAllData} />}
-            {activeTab === 'safety'    && <SafetyTab API_BASE={API_BASE} products={products} onCheckComplete={() => loadAllData(true)} />}
-            {activeTab === 'inventory' && <InventoryTab API_BASE={API_BASE} products={products} fetchProducts={fetchProducts} routineAM={routineAM} routinePM={routinePM} fetchRoutines={fetchRoutines} />}
+            {activeTab === 'routine'   && <RoutineTab API_BASE={API_BASE} username={username} />}
+            {activeTab === 'scan'      && <ScanTab API_BASE={API_BASE} username={username} onProductAdded={loadAllData} />}
+            {activeTab === 'safety'    && <SafetyTab API_BASE={API_BASE} products={products} username={username} onCheckComplete={() => loadAllData(true)} />}
+            {activeTab === 'inventory' && <InventoryTab API_BASE={API_BASE} products={products} username={username} fetchProducts={fetchProducts} routineAM={routineAM} routinePM={routinePM} fetchRoutines={fetchRoutines} />}
           </div>
         )}
       </main>
+
+      {/* ── Telegram Integration Modal ── */}
+      {showTeleModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
+          <div className="s-card" style={{ padding: 24, width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-hi)' }}>🤖 Integrasi Bot Telegram</p>
+              <button onClick={() => setShowTeleModal(false)} className="btn-ghost" style={{ border: 'none', background: 'none', fontSize: '1rem', color: 'var(--text-lo)', cursor: 'pointer' }}>✕</button>
+            </div>
+            <hr className="rule" style={{ margin: 0 }} />
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-mid)', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <p>Sambungkan bot Telegram Skindaily ke akun website Anda agar data selalu sinkron:</p>
+              <ol style={{ paddingLeft: 16, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <li>Buka bot Telegram Anda: <b>@skindaily_bot</b></li>
+                <li>Kirim perintah <code>/start</code></li>
+                <li>Bot akan mendeteksi akun belum terhubung dan meminta Anda memasukkan username.</li>
+                <li>Ketik username Anda: <code style={{ fontSize: '0.85rem', color: 'var(--color-gold)', fontWeight: 700 }}>{username}</code></li>
+              </ol>
+              <p style={{ margin: '4px 0 0', fontStyle: 'italic', color: 'var(--text-lo)' }}>Setelah terhubung, Anda dapat melacak rutinitas dan masa kedaluwarsa langsung lewat Telegram!</p>
+            </div>
+            <button onClick={() => setShowTeleModal(false)} className="btn btn-gold" style={{ padding: 10, fontSize: '0.78rem' }}>
+              Tutup & Selesai
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

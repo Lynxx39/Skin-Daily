@@ -6,7 +6,7 @@ const STATUS_CFG = {
   BAHAYA:     { cls: 'result-bahaya', color: '#D4736F', icon: '✕', label: 'Berbahaya' },
 };
 
-export default function SafetyTab({ API_BASE, products, onCheckComplete }) {
+export default function SafetyTab({ API_BASE, products, username, onCheckComplete }) {
   const [idA, setIdA] = useState('');
   const [idB, setIdB] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,7 +31,7 @@ export default function SafetyTab({ API_BASE, products, onCheckComplete }) {
   const checkAll = async () => {
     setLoadingAll(true); setError(null); setResult(null); setResultAll(null);
     try {
-      const res = await fetch(`${API_BASE}/api/products/check-safety-all`);
+      const res = await fetch(`${API_BASE}/api/products/check-safety-all?username=${encodeURIComponent(username)}`);
       if (res.ok) { setResultAll(await res.json()); if (onCheckComplete) onCheckComplete(); }
       else { const e = await res.json(); setError(e.detail || 'Analisis gagal.'); }
     } catch { setError('Koneksi gagal.'); }
@@ -41,7 +41,7 @@ export default function SafetyTab({ API_BASE, products, onCheckComplete }) {
   const applyRecommendation = async () => {
     setLoadingApply(true); setError(null); setSuccessMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/api/routine/apply-ai-recommendation`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/routine/apply-ai-recommendation?username=${encodeURIComponent(username)}`, { method: 'POST' });
       if (res.ok) {
         setSuccessMsg('✓ Rutinitas berhasil diperbarui dengan rekomendasi AI!');
         setTimeout(() => setSuccessMsg(null), 4000);

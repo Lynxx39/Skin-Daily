@@ -353,8 +353,11 @@ def check_safety(id_a: int = Query(...), id_b: int = Query(...)):
     return result
 
 @app.get("/api/products/check-safety-all")
-def check_safety_all():
-    products = query_supabase("products?select=*")
+def check_safety_all(username: Optional[str] = Query(None)):
+    if not username:
+        return {"conflicts": [], "recommendation": "Username tidak disediakan."}
+        
+    products = query_supabase(f"products?select=*&username=eq.{username}")
     if not products:
         return {"conflicts": [], "recommendation": "Anda belum menambahkan produk ke gudang."}
         
@@ -408,7 +411,7 @@ def check_safety_all():
         recommendation = result.get("recommendation", "")
         
         # Format message for Telegram
-        msg = "<b>🧬 Safety Analysis: Semua Produk</b>\n\n"
+        msg = f"<b>🧬 Safety Analysis: Semua Produk ({username})</b>\n\n"
         
         if conflicts:
             msg += f"<b>⚠️ Konflik Ditemukan: {len(conflicts)}</b>\n"
@@ -427,14 +430,17 @@ def check_safety_all():
     return result
 
 @app.post("/api/routine/apply-ai-recommendation")
-def apply_ai_recommendation():
+def apply_ai_recommendation(username: Optional[str] = Query(None)):
     """Parse AI recommendation dan auto-setup routine berdasarkan analisis keamanan"""
-    products = query_supabase("products?select=*")
+    if not username:
+        raise HTTPException(status_code=400, detail="Username tidak disediakan.")
+        
+    products = query_supabase(f"products?select=*&username=eq.{username}")
     if not products or len(products) < 2:
         raise HTTPException(status_code=400, detail="Minimum 2 produk dibutuhkan untuk analisis.")
     
     # Get AI analysis
-    ai_result = check_safety_all()
+    ai_result = check_safety_all(username)
     recommendation = ai_result.get("recommendation", "")
     
     # Parse recommendation dengan AI untuk extract AM/PM assignments
@@ -472,16 +478,15 @@ def apply_ai_recommendation():
         pm_products = parse_result.get("pm_routine", [])
         
         print(f"Parsed AI result: AM={len(am_products)}, PM={len(pm_products)}")
-        print(f"AM products: {am_products}")
-        print(f"PM products: {pm_products}")
         
-        # Build routine steps for Supabase with explicit int conversions
+        # Build routine steps for Supabase
         am_steps = []
         for i, p in enumerate(am_products):
             step = {
                 "product_id": int(p['id']) if isinstance(p, dict) else int(p),
                 "routine_type": "AM",
-                "step_order": i+1
+                "step_order": i+1,
+                "username": username
             }
             am_steps.append(step)
             
@@ -490,17 +495,17 @@ def apply_ai_recommendation():
             step = {
                 "product_id": int(p['id']) if isinstance(p, dict) else int(p),
                 "routine_type": "PM",
-                "step_order": i+1
+                "step_order": i+1,
+                "username": username
             }
             pm_steps.append(step)
         
         all_steps = am_steps + pm_steps
-        print(f"Built steps: {all_steps}")
         
-        # Delete existing routines and insert new ones
+        # Delete existing routines for this username
         try:
-            query_supabase("routine_steps?routine_type=eq.AM", "DELETE")
-            query_supabase("routine_steps?routine_type=eq.PM", "DELETE")
+            query_supabase(f"routine_steps?routine_type=eq.AM&username=eq.{username}", "DELETE")
+            query_supabase(f"routine_steps?routine_type=eq.PM&username=eq.{username}", "DELETE")
         except Exception as e:
             print(f"Delete error: {e}")
         
@@ -509,10 +514,7 @@ def apply_ai_recommendation():
                 result = query_supabase("routine_steps", "POST", all_steps)
                 print(f"Supabase POST result: {result}")
             except Exception as e:
-                print(f"Supabase POST error, will use SQLite backup: {e}")
-        
-        # No-op for SQLite
-        pass
+                print(f"Supabase POST error: {e}")
         
         return {
             "status": "success",
@@ -525,9 +527,11 @@ def apply_ai_recommendation():
         raise HTTPException(status_code=500, detail=f"Gagal parse rekomendasi: {str(e)}")
 
 @app.get("/api/routine")
-def fetch_routine(routine_type: str = Query(..., regex="^(AM|PM)$")):
+def fetch_routine(routine_type: str = Query(..., regex="^(AM|PM)$"), username: Optional[str] = Query(None)):
+    if not username:
+        return {"routine_type": routine_type, "steps": []}
     # Fetch routine steps and their products directly from Supabase!
-    steps = query_supabase(f"routine_steps?select=*,products(*)&routine_type=eq.{routine_type}&order=step_order")
+    steps = query_supabase(f"routine_steps?select=*,products(*)&routine_type=eq.{routine_type}&username=eq.{username}&order=step_order")
     
     current_date = date.today()
     processed_steps = []
@@ -570,13 +574,8 @@ def fetch_routine(routine_type: str = Query(..., regex="^(AM|PM)$")):
         "steps": processed_steps
     }
 
-@app.post("/api/routine/steps")
-def save_routine(data: RoutineSaveSchema):
-    save_routine_steps(data.routine_type, data.product_ids)
-    return {"status": "success", "message": f"{data.routine_type} routine updated successfully."}
-
 @app.post("/api/routine/log")
-def log_routine(logs: List[RoutineLogSchema]):
+def log_routine(logs: List[RoutineLogSchema], username: Optional[str] = Query(None)):
     completed_count = 0
     skipped_count = 0
     details = []
@@ -597,7 +596,8 @@ def log_routine(logs: List[RoutineLogSchema]):
     # Send Telegram notification if configured
     if completed_count > 0 or skipped_count > 0:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        msg = f"<b>📅 Skincare Log - {now_str}</b>\n\n"
+        user_label = f" ({username})" if username else ""
+        msg = f"<b>📅 Skincare Log{user_label} - {now_str}</b>\n\n"
         msg += f"Status pemakaian produk:\n" + "\n".join(details) + "\n\n"
         msg += f"Total: {completed_count} digunakan, {skipped_count} dilewati."
         

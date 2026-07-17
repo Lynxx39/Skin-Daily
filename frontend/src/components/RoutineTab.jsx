@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
 
-export default function RoutineTab({ API_BASE }) {
+export default function RoutineTab({ API_BASE, username }) {
   const [routineType, setRoutineType] = useState('AM');
   const [steps, setSteps] = useState([]);
   const [checked, setChecked] = useState({});
@@ -21,9 +21,10 @@ export default function RoutineTab({ API_BASE }) {
   };
 
   const load = async (type) => {
+    if (!username) return;
     setLoading(true); setMessage(null);
     try {
-      const res = await fetch(`${API_BASE}/api/routine?routine_type=${type}`);
+      const res = await fetch(`${API_BASE}/api/routine?routine_type=${type}&username=${encodeURIComponent(username)}`);
       const data = await res.json();
       const steps_data = data.steps || [];
       const mapped = steps_data.map(s => ({
@@ -43,12 +44,12 @@ export default function RoutineTab({ API_BASE }) {
   const toggle = id => setChecked(p => ({ ...p, [id]: !p[id] }));
 
   const save = async () => {
-    if (!steps.length) return;
+    if (!steps.length || !username) return;
     setSaving(true); setMessage(null);
-    const logs = steps.map(s => ({ product_id: s.id, status: checked[s.id] ? 'COMPLETED' : 'SKIPPED' }));
+    const logs = steps.map(s => ({ product_id: s.id, status: checked[s.id] ? 'COMPLETED' : 'SKIPPED', username }));
     try {
       await supabase.from('routine_logs').insert(logs);
-      await fetch(`${API_BASE}/api/routine/log`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logs) });
+      await fetch(`${API_BASE}/api/routine/log?username=${encodeURIComponent(username)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logs) });
       const done = logs.filter(l => l.status === 'COMPLETED').length;
       setMessage({ ok: true, text: `${done} dari ${steps.length} produk dicatat. Laporan dikirim ke Telegram.` });
     } catch { setMessage({ ok: false, text: 'Gagal menyimpan. Coba lagi.' }); }
