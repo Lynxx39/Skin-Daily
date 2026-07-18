@@ -187,12 +187,15 @@ export default function App() {
 
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div style={{ display: 'flex', gap: 4 }}>
-              {botUsername && <button onClick={() => window.open(`https://t.me/${botUsername}?start=${encodeURIComponent(username)}`, '_blank')} className="btn-theme" title="Buka Bot Telegram" style={{ height: 28, padding: '0 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.05em' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-                <span>BOT</span>
+              {botUsername && <button 
+                onClick={() => window.open(`https://t.me/${botUsername}?start=${encodeURIComponent(username)}`, '_blank')} 
+                title="Buka Bot Telegram" 
+                style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 15, border: '1px solid rgba(42, 171, 238, 0.25)', background: 'rgba(42, 171, 238, 0.1)', color: '#2AABEE', cursor: 'pointer', transition: 'all 0.2s ease', fontSize: '0.7rem', fontWeight: 600, fontFamily: 'inherit' }} 
+                onMouseEnter={e => { e.currentTarget.style.background='rgba(42, 171, 238, 0.18)'; e.currentTarget.style.transform='translateY(-1px)'; }} 
+                onMouseLeave={e => { e.currentTarget.style.background='rgba(42, 171, 238, 0.1)'; e.currentTarget.style.transform='translateY(0)'; }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215l-8.609 3.33c-2.068.8-4.133 1.598-5.724 2.21a405.15 405.15 0 0 1-2.849 1.09c-.42.147-.99.332-1.473.901-.728.855-.149 1.827.354 2.234.349.282.8.434 1.085.546l3.93 1.556c.238.725 1.4 4.267 1.593 4.85.103.31.21.513.367.69.075.085.163.157.266.213l.018.01.017.008c.22.104.44.13.612.118l.034-.001c.32-.038.579-.192.741-.33l2.082-1.96 4.329 3.3c.08.063.207.13.3.17a1.306 1.306 0 0 0 1.065.03c.482-.18.766-.575.893-.972l3.68-17.1c.116-.545.074-.98-.09-1.345-.33-.72-1.063-.878-1.399-.963Zm-.148 1.89-3.68 17.1c-.021.09-.043.131-.113.161a.274.274 0 0 1-.182.007l-5.096-3.886-.004-.003-2.756-2.102 12.09-9.292c.068-.06.137-.14.031-.12-.074.013-.154.069-.191.093L8.127 13.35l-.001.001-1.715-4.29-.002-.004-.001-.001-.002-.003 17.727-6.865c.043-.017.12-.04.166-.017.045.022.053.08.049.146Z"/></svg>
+                <span>Telegram</span>
               </button>}
               <button onClick={toggleTheme} className="btn-theme" title={theme === 'dark' ? 'Ganti ke Tema Terang' : 'Ganti ke Tema Gelap'} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {theme === 'dark' ? (
