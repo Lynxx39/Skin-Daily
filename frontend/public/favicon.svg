@@ -1,18 +1,52 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48">
   <defs>
-    <linearGradient id="dropGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#A5C49A" />
-      <stop offset="100%" stop-color="#7D9B76" />
+    <!-- Background: Deep Space/Midnight to make colors pop -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" /> <!-- Very dark indigo -->
+      <stop offset="100%" stop-color="#000000" />
     </linearGradient>
-    <linearGradient id="sparkleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FFF" />
-      <stop offset="100%" stop-color="#C9A84C" />
+    
+    <!-- Center Petal: Glowing Peach/Rose Sunset -->
+    <linearGradient id="gradCenter" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#f43f5e" /> <!-- Rose 500 -->
+      <stop offset="100%" stop-color="#fbbf24" /> <!-- Amber 400 -->
+    </linearGradient>
+    
+    <!-- Inner Petals: Neon Pink/Purple -->
+    <linearGradient id="gradInner" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6" /> <!-- Violet 500 -->
+      <stop offset="100%" stop-color="#f472b6" /> <!-- Pink 400 -->
+    </linearGradient>
+
+    <!-- Outer Petals: Cyan/Blue to Purple -->
+    <linearGradient id="gradOuter" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#0ea5e9" /> <!-- Sky 500 -->
+      <stop offset="100%" stop-color="#a855f7" /> <!-- Purple 500 -->
+    </linearGradient>
+    
+    <!-- Sparkles -->
+    <linearGradient id="sparkle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#fde047" /> <!-- Yellow 300 -->
     </linearGradient>
   </defs>
-  <!-- Beautiful organic droplet -->
-  <path fill="url(#dropGrad)" d="M12,2.69C12,2.69 4,11.5 4,15.5A8,8 0 0,0 12,23.5A8,8 0 0,0 20,15.5C20,11.5 12,2.69 12,2.69Z" />
-  <!-- Gold glowing sparkle (four-point star) -->
-  <path fill="url(#sparkleGrad)" d="M18.5,4L19.25,5.75L21,6.5L19.25,7.25L18.5,9L17.75,7.25L16,6.5L17.75,5.75L18.5,4Z" />
-  <!-- Small white sparkle inside droplet -->
-  <path fill="#FFF" opacity="0.8" d="M9.5,10L9.88,10.88L10.75,11.25L9.88,11.63L9.5,12.5L9.13,11.63L8.25,11.25L9.13,10.88L9.5,10Z" />
+
+  <!-- Aurora Lotus Petals (Back to Front) -->
+  
+  <!-- Far Left Petal (Blue/Purple) -->
+  <path fill="url(#gradOuter)" d="M10 17C4 15 1.5 11 2 8C4 10.5 6.5 13 10 17Z" opacity="0.85"/>
+  <!-- Far Right Petal (Blue/Purple) -->
+  <path fill="url(#gradOuter)" d="M14 17C20 15 22.5 11 22 8C20 10.5 17.5 13 14 17Z" opacity="0.85"/>
+  
+  <!-- Left Inner Petal (Pink/Purple) -->
+  <path fill="url(#gradInner)" d="M11 19C5 16 3.5 10 5 6C7 8 9 12.5 11 19Z" opacity="0.95"/>
+  <!-- Right Inner Petal (Pink/Purple) -->
+  <path fill="url(#gradInner)" d="M13 19C19 16 20.5 10 19 6C17 8 15 12.5 13 19Z" opacity="0.95"/>
+
+  <!-- Center Petal (Glowing Rose/Amber) -->
+  <path fill="url(#gradCenter)" d="M12 3.5C14 8 15.5 13 12 21C8.5 13 10 8 12 3.5Z" />
+
+  <!-- Sparkles (Healthy Glowing Skin) -->
+  <path fill="url(#sparkle)" d="M19 2.5L19.5 3.8L20.8 4.3L19.5 4.8L19 6.1L18.5 4.8L17.2 4.3L18.5 3.8L19 2.5Z" />
+  <path fill="url(#sparkle)" d="M5 3.5L5.3 4.3L6.1 4.6L5.3 4.9L5 5.7L4.7 4.9L3.9 4.6L4.7 4.3L5 3.5Z" />
 </svg>
