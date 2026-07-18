@@ -369,8 +369,9 @@ def check_safety(id_a: int = Query(...), id_b: int = Query(...)):
         msg += f"<b>Status:</b> {result.get('status', 'TIDAK DIKETAHUI')}\n"
         msg += f"<b>Alasan:</b> {result.get('reason', '')}"
         
-        # Send to Telegram
-        send_telegram_message(msg)
+        # Send to user's Telegram
+        owner = prod_a.get('username') or prod_b.get('username')
+        send_telegram_message(msg, username=owner)
     
     return result
 
@@ -447,7 +448,7 @@ def check_safety_all(username: Optional[str] = Query(None)):
         msg += f"\n<b>💡 Rekomendasi:</b>\n{recommendation}"
         
         # Send to Telegram
-        send_telegram_message(msg)
+        send_telegram_message(msg, username=username)
     
     return result
 
@@ -623,9 +624,23 @@ def log_routine(logs: List[RoutineLogSchema], username: Optional[str] = Query(No
         msg += f"Status pemakaian produk:\n" + "\n".join(details) + "\n\n"
         msg += f"Total: {completed_count} digunakan, {skipped_count} dilewati."
         
-        send_telegram_message(msg)
+        send_telegram_message(msg, username=username)
         
     return {"status": "success", "completed": completed_count, "skipped": skipped_count}
+
+
+@app.get("/api/cron/expiry-check")
+def cron_expiry_check():
+    """Called daily by Vercel Cron to send expiry notifications."""
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        return {"status": "skipped", "reason": "No bot token"}
+    from .telegram_bot import check_expiry_notifications
+    try:
+        check_expiry_notifications(bot_token)
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
 
 @app.post("/api/telegram/webhook")
 def telegram_webhook(update: dict):

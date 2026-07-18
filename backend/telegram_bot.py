@@ -1128,6 +1128,80 @@ def handle_bot_message(bot_token: str, message: dict):
     else:
         send_telegram_reply(bot_token, chat_id, "❓ Perintah tidak dikenal. Ketik /start untuk melihat panduan asisten.")
 
+# ── Daily Expiry Notification ──
+_last_expiry_check_date = None
+
+def check_expiry_notifications(bot_token: str):
+    """Check all products and notify users whose products expire within 30 days."""
+    global _last_expiry_check_date
+    today = date.today()
+    
+    # Only run once per day
+    if _last_expiry_check_date == today:
+        return
+    _last_expiry_check_date = today
+    
+    print(f"[Skindaily Bot] Running daily expiry check for {today}")
+    
+    # Get all products with expiry info
+    products = query_supabase("products?select=*&opened_at=not.is.null&pao_months=not.is.null")
+    if not products:
+        return
+    
+    # Group expiring products by username
+    expiring_by_user = {}
+    for prod in products:
+        username = prod.get("username")
+        if not username:
+            continue
+        try:
+            opened_date = datetime.strptime(prod["opened_at"], "%Y-%m-%d").date()
+            pao_months = int(prod["pao_months"])
+            
+            # Calculate expiry date
+            exp_year = opened_date.year + (opened_date.month + pao_months - 1) // 12
+            exp_month = (opened_date.month + pao_months - 1) % 12 + 1
+            exp_date = date(exp_year, exp_month, opened_date.day if opened_date.day <= 28 else 28)
+            
+            days_left = (exp_date - today).days
+            if 0 <= days_left <= 30:
+                expiring_by_user.setdefault(username, []).append({
+                    "name": f"{prod['brand']} {prod['name']}",
+                    "days_left": days_left,
+                    "exp_date": exp_date.strftime("%d-%m-%Y")
+                })
+        except Exception:
+            continue
+    
+    # Send notifications per user
+    for username, items in expiring_by_user.items():
+        # Lookup chat_id from telegram_bindings
+        bindings = query_supabase(f"telegram_bindings?username=eq.{username}&select=chat_id")
+        if not bindings:
+            continue
+        chat_id = bindings[0]["chat_id"]
+        
+        items.sort(key=lambda x: x["days_left"])
+        msg = "⏰ <b>Peringatan Kedaluwarsa Produk!</b>\n\n"
+        msg += f"Ada <b>{len(items)} produk</b> yang akan kedaluwarsa dalam 30 hari:\n\n"
+        for item in items:
+            if item["days_left"] == 0:
+                badge = "🔴"
+                label = "<b>HARI INI!</b>"
+            elif item["days_left"] <= 7:
+                badge = "🟠"
+                label = f"<b>{item['days_left']} hari lagi</b>"
+            else:
+                badge = "🟡"
+                label = f"{item['days_left']} hari lagi"
+            msg += f"{badge} {item['name']}\n   Exp: {item['exp_date']} ({label})\n\n"
+        
+        msg += "💡 <i>Segera habiskan atau ganti produk yang hampir kedaluwarsa.</i>"
+        send_telegram_reply(bot_token, chat_id, msg)
+    
+    if expiring_by_user:
+        print(f"[Skindaily Bot] Sent expiry alerts to {len(expiring_by_user)} user(s).")
+
 # Main bot loop
 def bot_polling_loop():
     offset = 0
@@ -1144,6 +1218,12 @@ def bot_polling_loop():
         if not bot_token:
             time.sleep(10)
             continue
+        
+        # Daily expiry check
+        try:
+            check_expiry_notifications(bot_token)
+        except Exception as e:
+            print(f"[Skindaily Bot] Expiry check error: {e}")
             
         url = f"https://api.telegram.org/bot{bot_token}/getUpdates?offset={offset}&timeout=5"
         
